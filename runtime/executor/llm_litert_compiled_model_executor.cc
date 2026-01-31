@@ -1272,7 +1272,19 @@ absl::Status LlmLiteRtCompiledModelExecutorBase::SetSamplerInputHandling(
 absl::Status LlmLiteRtCompiledModelExecutorBase::SampleLogits(
     const TensorBuffer& logits, TensorBuffer& ids_tensor) {
   if (sampler_ == nullptr) {
-    RETURN_IF_ERROR(InitializeSampler(logits_data_type_));
+    auto logits_data_type = ActivationDataType::FLOAT16;
+    LITERT_ASSIGN_OR_RETURN(auto logits_tensor_type, logits.TensorType());
+    if (logits_tensor_type.ElementType() == ElementType::Float16) {
+      logits_data_type = ActivationDataType::FLOAT16;
+    } else if (logits_tensor_type.ElementType() == ElementType::Float32) {
+      logits_data_type = ActivationDataType::FLOAT32;
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported logits data type for sampler: ",
+                       static_cast<int>(logits_tensor_type.ElementType())));
+    }
+
+    RETURN_IF_ERROR(InitializeSampler(logits_data_type));
   }
 
   if (sampler_handles_input_) {
@@ -1713,10 +1725,55 @@ LlmLiteRtCompiledModelExecutorStatic::Create(
   for (auto output_name : decode_signature.OutputNames()) {
     if (!absl::StartsWith(output_name, kv_cache_k_root_name) &&
         !absl::StartsWith(output_name, kv_cache_v_root_name)) {
-      LITERT_ASSIGN_OR_RETURN(auto output_buffer,
-                              compiled_model.CreateOutputBuffer(
-                                  kDecodeSignatureRunner, output_name));
-      decode_output_buffers[output_name] = std::move(output_buffer);
+      // If we are using the GPU sampler and the model is compiled with FP16
+      // precision, we force the output logits to be FP16 as the
+      // GPU sampler supports FP16 inputs.
+      // If we use CPU sampler or the model is executed with FP32 / mixed
+      // precision, we will keep the logits in FP32
+      auto sampler_backend = GetSamplerBackend(executor_settings);
+
+      if (output_name == signatures.output_logits && use_fp16_precision &&
+          sampler_backend.ok() && *sampler_backend == Backend::GPU) {
+        LITERT_ASSIGN_OR_RETURN(
+            size_t signature_index,
+            compiled_model.GetSignatureIndex(kDecodeSignatureRunner));
+        LITERT_ASSIGN_OR_RETURN(
+            size_t output_index,
+            compiled_model.FindOutputIndex(signature_index, output_name));
+        LITERT_ASSIGN_OR_RETURN(
+            std::vector<Layout> runtime_layouts,
+            compiled_model.GetOutputTensorLayouts(signature_index,
+                                                  /*update_allocation=*/true));
+        // Use runtime layout.
+        Layout runtime_layout = runtime_layouts[output_index];
+        LITERT_ASSIGN_OR_RETURN(auto requirements,
+                                compiled_model.GetOutputBufferRequirements(
+                                    kDecodeSignatureRunner, output_name));
+        LITERT_ASSIGN_OR_RETURN(auto strides, requirements.Strides());
+        if (!strides.empty()) {
+          auto dims = runtime_layout.Dimensions();
+          runtime_layout =
+              Layout(litert::Dimensions(dims.begin(), dims.end()),
+                     litert::Strides(strides.begin(), strides.end()));
+        }
+        LITERT_ASSIGN_OR_RETURN(RankedTensorType new_tensor_type,
+                                compiled_model.GetOutputTensorType(
+                                    kDecodeSignatureRunner, output_name));
+        new_tensor_type.SetElementType(litert::ElementType::Float16);
+        LITERT_ASSIGN_OR_RETURN(size_t size, requirements.BufferSize());
+        LITERT_ASSIGN_OR_RETURN(auto buffer_type,
+                                requirements.SupportedType(0));
+        LITERT_ASSIGN_OR_RETURN(auto output_buffer, TensorBuffer::CreateManaged(
+                                                        lrt_env, buffer_type,
+                                                        new_tensor_type, size));
+        decode_output_buffers[output_name] = std::move(output_buffer);
+      } else {
+        LITERT_ASSIGN_OR_RETURN(auto output_buffer,
+                                compiled_model.CreateOutputBuffer(
+                                    kDecodeSignatureRunner, output_name));
+
+        decode_output_buffers[output_name] = std::move(output_buffer);
+      }
     }
   }
 
