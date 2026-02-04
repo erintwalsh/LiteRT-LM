@@ -154,9 +154,10 @@ absl::Status AudioPreprocessorMiniAudio::PcmFramesToSpectrogram(
     }
   }
   if (windowed_signals.size() != num_frames) {
-    return absl::InternalError(absl::StrCat(
-        "Windowed signals size is not equal to expected number of frames: ",
-        windowed_signals.size(), " vs ", num_frames));
+    ABSL_LOG(WARNING)
+        << "Windowed signals size is not equal to expected number "
+           "of frames: "
+        << windowed_signals.size() << " vs " << num_frames;
   }
   const std::vector<float> hanning_window =
       GetHanningWindow(config_.GetFrameLength());
