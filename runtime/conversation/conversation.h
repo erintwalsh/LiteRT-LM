@@ -25,6 +25,7 @@
 #include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "runtime/components/constrained_decoding/constraint.h"
 #include "runtime/components/constrained_decoding/constraint_provider.h"
@@ -371,6 +372,30 @@ class Conversation {
   absl::Status SendMessageAsync(
       const Message& message,
       absl::AnyInvocable<void(absl::StatusOr<Message>)> user_callback,
+      OptionalArgs optional_args = OptionalArgs());
+
+  // Scores the target text after the prefill process is done. This function
+  // will only run the decode process to fetch the decode output logits, which
+  // is used to calculate the target text's score and update the model memory
+  // using the target_text tokens.
+  // This function should be called after SendMessage with
+  // has_pending_message=true or after prefilling messages.
+  // - target_text: The target text to score.
+  // - returns: This function returns the score associated with the target
+  // text after the model has been prefilled. The returned score is the sum of
+  // the negative log probability of seeing the target text during decode.
+  absl::StatusOr<Responses> RunTextScoring(
+      const std::vector<absl::string_view>& target_text,
+      OptionalArgs optional_args = OptionalArgs());
+
+  // Similar to the above RunTextScoring function, but this is a not blocking
+  // call and the function will return right away. The processing status will
+  // be signaled through the callback.
+  // - target_text: The target text to score.
+  // - callback: Callback to receive the scoring results.
+  absl::Status RunTextScoringAsync(
+      const std::vector<absl::string_view>& target_text,
+      absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
       OptionalArgs optional_args = OptionalArgs());
 
   // Returns the history of the conversation.
