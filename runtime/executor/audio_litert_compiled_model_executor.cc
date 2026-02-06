@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
 #include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
@@ -172,7 +173,8 @@ AudioLiteRtCompiledModelExecutor::AudioStaticEncoder::Initialize() {
   }
   if (!input_buffers_map_.contains(kSrcInputsName)) {
     return absl::InvalidArgumentError(
-        "The Audio Static Encoder model must have a src_inputs input buffer.");
+        "The Audio Static Encoder model must have a src_inputs input "
+        "buffer.");
   }
   input_mask_buffer_ = &input_buffers_map_[kMaskName];
   spectrogram_buffer_ = &input_buffers_map_[kSrcInputsName];
@@ -526,7 +528,8 @@ AudioLiteRtCompiledModelExecutor::Create(
     if (audio_encoder->GetOutputBuffersMap().size() !=
         audio_adapter->GetInputBuffers().size()) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "The number of output buffers of the audio encoder must be equal to "
+          "The number of output buffers of the audio encoder must be equal "
+          "to "
           "the number of input buffers of the audio adapter, but got ",
           audio_encoder->GetOutputBuffersMap().size(), " and ",
           audio_adapter->GetInputBuffers().size()));
@@ -541,7 +544,8 @@ AudioLiteRtCompiledModelExecutor::Create(
         output_sequence_length;
   }
 
-  // Make the audio adapter take the audio encoder's mask and features as input.
+  // Make the audio adapter take the audio encoder's mask and features as
+  // input.
   LITERT_ASSIGN_OR_RETURN(auto encoder_mask_tensor,
                           audio_encoder->GetOutputMaskBuffer().Duplicate());
   audio_adapter->GetMutableInputBuffers()[0] = std::move(encoder_mask_tensor);
@@ -585,7 +589,7 @@ absl::StatusOr<int> AudioLiteRtCompiledModelExecutor::EncodeInternal(
       audio_adapter_->GetMutableOutputBuffers()[0].Read<float>(
           absl::MakeSpan(audio_embeddings.data(),
                          chunk_valid_tokens * audio_embedding_dimensions_)));
-  if (exeuctor_properties_.is_streaming_model) {
+  if (executor_properties_.is_streaming_model) {
     reinterpret_cast<AudioStreamingEncoder*>(audio_encoder_.get())
         ->SwapInternalStateBuffers();
   }

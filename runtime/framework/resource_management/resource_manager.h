@@ -112,7 +112,8 @@ class ResourceManager {
   absl::StatusOr<std::unique_ptr<LlmExecutor>>
   AcquireExecutorWithContextHandler(
       std::shared_ptr<ContextHandler> new_context_handle)
-      ABSL_LOCKS_EXCLUDED(executor_mutex_);
+      ABSL_LOCKS_EXCLUDED(executor_mutex_)
+          ABSL_LOCKS_EXCLUDED(audio_executor_mutex_);
 
   // Try to load the vision executor if the vision executor is not loaded.
   absl::Status TryLoadingVisionExecutor()

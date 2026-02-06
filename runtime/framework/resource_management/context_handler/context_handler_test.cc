@@ -89,9 +89,9 @@ class ContextHandlerTest : public testing::Test {
                      MakeSharedProcessedContext());
     auto runtime_config = std::make_unique<RuntimeConfig>();
     auto runtime_state = std::make_unique<RuntimeState>();
-    return ContextHandler::Bundle(std::move(shared_processed_context),
-                                  std::move(runtime_config),
-                                  std::move(runtime_state));
+    return ContextHandler::Bundle(
+        std::move(shared_processed_context), std::move(runtime_config),
+        std::move(runtime_state), /*audio_context=*/nullptr);
   };
 };
 
